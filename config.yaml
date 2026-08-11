@@ -14,4 +14,6 @@ database:
   sql_path: sql
   version_table: controle_versoes
   version_schema_file: versionamento.sql
-  execution_order: [banco_ouros_fisico.sql]
+  execution_order:
+    - file: banco_ouros_fisico.sql
+      mode: once
