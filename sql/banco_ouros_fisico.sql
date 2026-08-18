@@ -1,182 +1,212 @@
-CREATE TABLE addresses (
+CREATE TABLE IF NOT EXISTS addresses (
     id SERIAL PRIMARY KEY,
-    zip_code VARCHAR(32) NOT NULL CHECK(length(zip_code) > 0),
-    state VARCHAR(2) NOT NULL CHECK(length(state) = 2),
-    city VARCHAR(32) NOT NULL CHECK(length(city) > 0),
-    number VARCHAR(32) NOT NULL CHECK(length(number) > 0),
-    country VARCHAR(2) NOT NULL CHECK(length(country) = 2)
+    zip_code VARCHAR,
+    state VARCHAR,
+    city VARCHAR,
+    number INTEGER,
+    country VARCHAR
 );
 
-
-CREATE TABLE enterprises (
+CREATE TABLE IF NOT EXISTS enterprises (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL CHECK(length(name) > 0),
-    email VARCHAR(32) NOT NULL CHECK(length(email) > 0),
-    cnpj VARCHAR(14) UNIQUE NOT NULL CHECK(length(cnpj) = 14), 
-    telephone VARCHAR(13) NOT NULL CHECK(length(telephone) > 9),
-    id_address INTEGER REFERENCES addresses(id) NOT NULL
+    name VARCHAR,
+    email VARCHAR,
+    cnpj VARCHAR UNIQUE,
+    document_number VARCHAR UNIQUE,
+    telephone VARCHAR,
+    id_address INTEGER REFERENCES addresses (id)
 );
 
-
-CREATE TABLE farms (
+CREATE TABLE IF NOT EXISTS farms (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL CHECK(length(name) > 0),
-    area_property FLOAT NOT NULL,
-    region VARCHAR(20) NOT NULL CHECK(length(region) > 0),
-    poultry_capacity INTEGER NOT NULL,
-    place VARCHAR(40) NOT NULL CHECK(length(place) > 0),
-    id_adress INTEGER REFERENCES addresses(id) NOT NULL,
-    id_enterprise INTEGER REFERENCES enterprises(id) NOT NULL
+    name VARCHAR,
+    area_property DOUBLE PRECISION,
+    region VARCHAR,
+    poultry_capacity INTEGER,
+    place VARCHAR,
+    id_adress INTEGER REFERENCES addresses (id),
+    id_enterprise INTEGER REFERENCES enterprises (id)
 );
 
-
-CREATE TABLE tips (
+CREATE TABLE IF NOT EXISTS tips (
     id SERIAL PRIMARY KEY,
-    tip TEXT NOT NULL CHECK(length(tip) > 0),
-    id_farm INTEGER REFERENCES farms(id) NOT NULL
+    tip VARCHAR,
+    id_farm INTEGER REFERENCES farms (id)
 );
 
-
-CREATE TABLE categories (
+CREATE TABLE IF NOT EXISTS categories (
     id SERIAL PRIMARY KEY,
-    category VARCHAR(50) NOT NULL CHECK(length(category) > 0),
-    id_tip INTEGER REFERENCES tips(id) NOT NULL
+    category VARCHAR,
+    id_tip INTEGER REFERENCES tips (id)
 );
 
-
-CREATE TABLE reviews (
+CREATE TABLE IF NOT EXISTS reviews (
     id SERIAL PRIMARY KEY,
-    comment TEXT NOT NULL,
-    pointing INTEGER NOT NULL,
-    id_tip INTEGER REFERENCES tips(id) NOT NULL
+    comment TEXT,
+    pointing INTEGER,
+    id_tip INTEGER REFERENCES tips (id)
 );
 
-
-CREATE TABLE farm_owners (
+CREATE TABLE IF NOT EXISTS farm_owners (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(32) NOT NULL CHECK(length(name) > 0),
-    password VARCHAR(32) NOT NULL CHECK(length(password) > 0),
-    email VARCHAR(32) NOT NULL CHECK(length(email) > 0),
-    zip_code VARCHAR(32) NOT NULL CHECK(length(zip_code) > 0),
-    telephone VARCHAR(13) NOT NULL CHECK(length(telephone) > 9),
-    id_farm INTEGER REFERENCES farms(id) NOT NULL
+    name VARCHAR,
+    password VARCHAR,
+    email VARCHAR,
+    document_number VARCHAR UNIQUE,
+    telephone VARCHAR,
+    zip_code VARCHAR,
+    id_farm INTEGER REFERENCES farms (id)
 );
 
-
-CREATE TABLE individual_goals (
+CREATE TABLE IF NOT EXISTS individual_goals (
     id SERIAL PRIMARY KEY,
     descripition VARCHAR,
-    type VARCHAR(30) NOT NULL CHECK(length(type) > 0),
-    status VARCHAR(30) NOT NULL CHECK(length(status) > 0),
-    target_value FLOAT NOT NULL,
-    title VARCHAR(40) NOT NULL CHECK(length(title) > 0),
-    id_farm INTEGER REFERENCES farms(id) NOT NULL
+    type VARCHAR,
+    status VARCHAR,
+    target_value DOUBLE PRECISION,
+    title VARCHAR,
+    id_farm INTEGER REFERENCES farms (id)
 );
 
-
-CREATE TABLE water_registries (
+CREATE TABLE IF NOT EXISTS water_registries (
     id SERIAL PRIMARY KEY,
-    registration_date DATE NOT NULL,
-    strart_hydrometer FLOAT NOT NULL,
-    end_hydrometer FLOAT NOT NULL,
-    id_farm INTEGER REFERENCES farms(id) NOT NULL
+    registration_date DATE,
+    strart_hydrometer DOUBLE PRECISION,
+    end_hydrometer DOUBLE PRECISION,
+    id_farm INTEGER REFERENCES farms (id)
 );
 
-
-CREATE TABLE energy_registries (
+CREATE TABLE IF NOT EXISTS energy_registries (
     id SERIAL PRIMARY KEY,
-    registration_date DATE NOT NULL,
-    energy_consumption FLOAT NOT NULL,
-    id_farm INTEGER REFERENCES farms(id) NOT NULL
+    registration_date DATE,
+    energy_consumption DOUBLE PRECISION,
+    id_farm INTEGER REFERENCES farms (id)
 );
 
-
-CREATE TABLE lots (
+CREATE TABLE IF NOT EXISTS lots (
     id SERIAL PRIMARY KEY,
-    received_chickens INT NOT NULL,
-    delivered_chickens INT NOT NULL,
-    date_birth DATE NOT NULL,
-    delivery_date DATE NOT NULL,
-    gain FLOAT NOT NULL,
-    id_enterprise INTEGER REFERENCES enterprises(id) NOT NULL,
-    id_energy_restries INTEGER REFERENCES energy_registries(id) NOT NULL,
-    id_water_restries INTEGER REFERENCES water_registries(id) NOT NULL
+    received_chickens INTEGER,
+    delivered_chickens INTEGER,
+    date_birth DATE,
+    delivery_date DATE,
+    gain DOUBLE PRECISION,
+    id_enterprise INTEGER REFERENCES enterprises (id),
+    id_farm INTEGER REFERENCES farms (id),
+    id_energy_restries INTEGER REFERENCES energy_registries (id),
+    id_water_restries INTEGER REFERENCES water_registries (id)
 );
 
-
-CREATE TABLE company_employees (
+CREATE TABLE IF NOT EXISTS company_employees (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(32) NOT NULL CHECK(length(name) > 0),
-    zip_code VARCHAR NOT NULL,
-    email VARCHAR(32) NOT NULL CHECK(length(email) > 0),
-    telephone VARCHAR(13) NOT NULL CHECK(length(telephone) > 9),
-    id_enterprise INTEGER REFERENCES enterprises(id) NOT NULL
+    name VARCHAR,
+    zip_code VARCHAR UNIQUE,
+    document_number VARCHAR UNIQUE,
+    email VARCHAR,
+    telephone VARCHAR,
+    password VARCHAR,
+    id_enterprise INTEGER REFERENCES enterprises (id)
 );
 
-
-CREATE TABLE adms (
+CREATE TABLE IF NOT EXISTS adms (
     id SERIAL PRIMARY KEY,
-    email VARCHAR(32) NOT NULL CHECK(length(email) > 0),
-    password VARCHAR(32) NOT NULL CHECK(length(password) > 0)
+    email VARCHAR,
+    password VARCHAR
 );
 
-
-CREATE TABLE medication_plans (
+CREATE TABLE IF NOT EXISTS medication_plans (
     id SERIAL PRIMARY KEY,
-    title VARCHAR(40) NOT NULL CHECK(length(title) > 0),
-    date_start_validity DATE NOT NULL,
-    date_end_validity DATE NOT NULL,
+    title VARCHAR,
+    date_start_validity DATE,
+    date_end_validity DATE,
     description TEXT,
-    id_enterprise INTEGER REFERENCES enterprises(id) NOT NULL
+    id_enterprise INTEGER REFERENCES enterprises (id)
 );
 
-
-CREATE TABLE regions_medication_plans (
+CREATE TABLE IF NOT EXISTS regions_medication_plans (
     id SERIAL PRIMARY KEY,
-    region VARCHAR(20) NOT NULL CHECK(length(region) > 0),
-    id_plan INTEGER REFERENCES medication_plans(id) NOT NULL
+    region VARCHAR,
+    id_plan INTEGER REFERENCES medication_plans (id)
 );
 
-
-CREATE TABLE vaccines (
+CREATE TABLE IF NOT EXISTS vaccines (
     id SERIAL PRIMARY KEY,
-    aplication_days INTEGER NOT NULL,
-    name VARCHAR(20) NOT NULL CHECK(length(name) > 0),
-    dose FLOAT NOT NULL,
-    aplication_route VARCHAR(50) NOT NULL CHECK(length(aplication_route) > 0),
-    id_plan INTEGER REFERENCES medication_plans(id) NOT NULL
+    aplication_days INTEGER,
+    name VARCHAR,
+    dose DOUBLE PRECISION,
+    aplication_route VARCHAR,
+    id_plan INTEGER REFERENCES medication_plans (id)
 );
 
-
-CREATE TABLE diseases (
+CREATE TABLE IF NOT EXISTS diseases (
     id SERIAL PRIMARY KEY,
-    disease VARCHAR(100) NOT NULL CHECK(length(disease) > 0),
-    id_vacinne INTEGER REFERENCES vaccines(id) NOT NULL
+    disease VARCHAR,
+    id_vacinne INTEGER REFERENCES vaccines (id)
 );
 
-
-CREATE TABLE state_goals (
+CREATE TABLE IF NOT EXISTS state_goals (
     id SERIAL PRIMARY KEY,
-    description TEXT,
-    type VARCHAR(30) NOT NULL CHECK(length(type) > 0),
-    status VARCHAR(30) NOT NULL CHECK(length(status) > 0),
-    target_value FLOAT NOT NULL,
-    title VARCHAR(40) NOT NULL CHECK(length(title) > 0),
-    date_creation TIMESTAMP NOT NULL,
-    date_end TIMESTAMP NOT NULL,
-    id_farm INTEGER REFERENCES farms(id) NOT NULL
+    description VARCHAR,
+    type VARCHAR,
+    status VARCHAR,
+    target_value DOUBLE PRECISION,
+    title VARCHAR,
+    date_creation TIMESTAMP,
+    date_end TIMESTAMP,
+    id_farm INTEGER REFERENCES farms (id)
 );
 
-
-CREATE TABLE regions_goals (
+CREATE TABLE IF NOT EXISTS regions_goals (
     id SERIAL PRIMARY KEY,
-    region VARCHAR(20) NOT NULL CHECK(length(region) > 0),
-    id_goal INTEGER REFERENCES state_goals(id) NOT NULL
+    region VARCHAR,
+    id_goal INTEGER REFERENCES state_goals (id)
 );
 
-
-CREATE TABLE status (
+CREATE TABLE IF NOT EXISTS status (
     id SERIAL PRIMARY KEY,
-    status VARCHAR(30) NOT NULL CHECK(length(status) > 0),
-    id_estado INTEGER REFERENCES state_goals(id) NOT NULL
+    status VARCHAR,
+    id_estado INTEGER REFERENCES state_goals (id)
+);
+
+/* Tabelas associativas adicionadas a partir da versão lógica mais nova. */
+
+CREATE TABLE IF NOT EXISTS farm_goals (
+    id SERIAL PRIMARY KEY,
+    id_farm INTEGER NOT NULL REFERENCES farms (id),
+    id_goal INTEGER NOT NULL REFERENCES state_goals (id),
+    UNIQUE (id_farm, id_goal)
+);
+
+CREATE TABLE IF NOT EXISTS tip_categories (
+    id SERIAL PRIMARY KEY,
+    id_tip INTEGER NOT NULL REFERENCES tips (id),
+    id_categories INTEGER NOT NULL REFERENCES categories (id),
+    UNIQUE (id_tip, id_categories)
+);
+
+CREATE TABLE IF NOT EXISTS state_goal_regions (
+    id SERIAL PRIMARY KEY,
+    id_goal INTEGER NOT NULL REFERENCES state_goals (id),
+    id_region INTEGER NOT NULL REFERENCES regions_goals (id),
+    UNIQUE (id_goal, id_region)
+);
+
+CREATE TABLE IF NOT EXISTS medication_regions_plan (
+    id SERIAL PRIMARY KEY,
+    id_medication INTEGER NOT NULL REFERENCES medication_plans (id),
+    id_region INTEGER NOT NULL REFERENCES regions_medication_plans (id),
+    UNIQUE (id_medication, id_region)
+);
+
+CREATE TABLE IF NOT EXISTS medication_plans_vaccines (
+    id SERIAL PRIMARY KEY,
+    id_medication INTEGER NOT NULL REFERENCES medication_plans (id),
+    id_vaccine INTEGER NOT NULL REFERENCES vaccines (id),
+    UNIQUE (id_medication, id_vaccine)
+);
+
+CREATE TABLE IF NOT EXISTS farms_tips (
+    id SERIAL PRIMARY KEY,
+    id_farm INTEGER NOT NULL REFERENCES farms (id),
+    id_tips INTEGER NOT NULL REFERENCES tips (id),
+    UNIQUE (id_farm, id_tips)
 );
