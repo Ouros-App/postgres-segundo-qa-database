@@ -16,4 +16,6 @@ database:
   version_schema_file: versionamento.sql
   execution_order:
     - file: banco_ouros_fisico.sql
+      mode: on_change
+    - file: atualiza_password.sql
       mode: once
