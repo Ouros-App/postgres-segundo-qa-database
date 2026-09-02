@@ -12,19 +12,19 @@
 </div>
 <!-- REPO-METADATA:END -->
 
-Template de banco PostgreSQL para o ambiente de QA, com schema SQL local aplicado por um script Python e controle de versões por commit.
+Template de banco PostgreSQL para o ambiente de QA, com os SQLs espelhados do repositório de produção e aplicados por um script Python.
 
 ## Status e escopo
 
-O repositório configura o projeto postgres-segundo-qa-database. O arquivo config.yaml aponta para sql/, usa a tabela controle_versoes e agenda a aplicação única de banco_ouros_fisico.sql.
+O repositório configura o projeto postgres-segundo-qa-database. O workflow `Sync SQL From Production` consulta o branch `main` de [postgres-segundo-prod-database](https://github.com/Ouros-App/postgres-segundo-prod-database) a cada 15 minutos e sob demanda, espelha `sql/` e `config.yaml`, e faz commit somente quando houver diferença. O QA mantém apenas o nome do projeto como configuração própria.
 
 ## Principais componentes
 
 - scripts/apply_sql.py: carrega as variáveis de .env, expande config.yaml, garante a role e o banco e aplica os SQL.
 - sql/versionamento.sql: cria a tabela controle_versoes.
-- sql/banco_ouros_fisico.sql: cria o schema inicial com tabelas como addresses, enterprises, farms, tips, categories, reviews, metas e registros de água/energia, além das relações entre esses dados.
+- sql/*.sql: cópia dos scripts presentes no repositório de produção; o prod é a fonte da verdade do schema.
 - A tabela controle_scripts_sql registra checksum, commit e data de execução dos scripts.
-- config.yaml define execution_order com modo once para banco_ouros_fisico.sql.
+- config.yaml mantém a mesma `execution_order` do prod.
 - GitHub Actions validam o scaffold e os SQL; o workflow de main aplica o script após push.
 
 ## Pré-requisitos
@@ -80,7 +80,7 @@ python scripts/apply_sql.py
 
 O script identifica o commit por GITHUB_SHA ou pelo Git local, garante a role e o banco configurados, cria a tabela de versionamento, aplica os SQL elegíveis e registra a execução em controle_versoes.
 
-A configuração atual usa sql/versionamento.sql como schema de versionamento e executa sql/banco_ouros_fisico.sql com modo once. Como esse modo registra o script, execuções posteriores o ignoram enquanto a entrada continuar registrada.
+A configuração usa sql/versionamento.sql como schema de versionamento e mantém a mesma ordem e os mesmos modos de execução do prod. O executor registra checksums em `controle_scripts_sql`, portanto scripts `on_change` só são reaplicados quando seu conteúdo mudar.
 
 ## Testes e qualidade
 
@@ -96,8 +96,7 @@ O workflow CI/CD atual valida a presença dos arquivos essenciais, a referência
 
 ~~~text
 sql/
-  banco_ouros_fisico.sql
-  versionamento.sql
+  *.sql (espelhados do prod)
 scripts/
   apply_sql.py
 tests/
@@ -108,6 +107,7 @@ requirements.txt
 .github/workflows/
   ci-cd.yml
   apply-sql-on-main.yml
+  sync-prod-sql.yml
 ~~~
 
 ## Contribuição

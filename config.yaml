@@ -17,5 +17,11 @@ database:
   execution_order:
     - file: banco_ouros_fisico.sql
       mode: on_change
+    - file: atualiza_lots_farm-owners.sql
+      mode: once
+    - file: dataload_inicial.sql
+      mode: on_change
     - file: atualiza_password.sql
       mode: once
+    - file: midas-user.sql
+      mode: on_change
