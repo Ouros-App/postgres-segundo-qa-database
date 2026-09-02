@@ -1,5 +1,6 @@
 DO $$
 BEGIN
+    -- Configure the LOGIN password outside this repository (for example: \password midas_ro).
     IF NOT EXISTS (
         SELECT 1
         FROM pg_roles
@@ -116,11 +117,6 @@ SELECT * FROM public.state_goal_regions;
 
 CREATE OR REPLACE VIEW midas.farms_tips AS
 SELECT * FROM public.farms_tips;
-
-REVOKE ALL PRIVILEGES ON SCHEMA public FROM PUBLIC;
-REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM PUBLIC;
-REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC;
-REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
 
 REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA midas FROM PUBLIC;
 

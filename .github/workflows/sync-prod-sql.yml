@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout QA
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Checkout production database repository
         uses: actions/checkout@v4
@@ -27,6 +29,7 @@ jobs:
           ref: main
           path: .prod-database
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Mirror SQL and execution order
         run: |
@@ -37,7 +40,7 @@ jobs:
       - name: Commit synchronization when production changed
         run: |
           rm -rf .prod-database
-          if git diff --quiet -- sql config.yaml; then
+          if [ -z "$(git status --porcelain --untracked-files=all -- sql config.yaml)" ]; then
             echo "QA já está sincronizado com o prod."
             exit 0
           fi
@@ -46,3 +49,6 @@ jobs:
           git add sql config.yaml
           git commit -m "chore: sincroniza SQL com prod"
           git push origin HEAD:main
+          gh workflow run apply-sql-on-main.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
