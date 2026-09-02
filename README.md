@@ -26,7 +26,7 @@ O repositório configura o projeto postgres-segundo-qa-database. O workflow `Syn
 - A tabela controle_scripts_sql registra checksum, commit e data de execução dos scripts.
 - config.yaml mantém a mesma `execution_order` do prod.
 - `dataload_inicial.sql` roda uma única vez para evitar duplicação de dados em caso de alteração do arquivo.
-- O role `midas_ro` deve receber sua senha fora do repositório, por exemplo com `\\password midas_ro` no `psql`.
+- O role `midas_ro` deve receber sua senha fora do repositório, por exemplo com `\password midas_ro` no `psql`.
 - GitHub Actions validam o scaffold e os SQL; o workflow de main aplica o script após push.
 
 ## Pré-requisitos
