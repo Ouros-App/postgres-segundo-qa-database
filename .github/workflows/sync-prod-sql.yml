@@ -1,0 +1,55 @@
+name: Sync SQL From Production
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: sync-prod-sql
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout QA
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Checkout production database repository
+        uses: actions/checkout@v4
+        with:
+          repository: Ouros-App/postgres-segundo-prod-database
+          ref: main
+          path: .prod-database
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Mirror SQL and execution order
+        run: |
+          rsync -a --delete .prod-database/sql/ sql/
+          cp .prod-database/config.yaml config.yaml
+          sed -i 's/^project: postgres-segundo-prod-database$/project: postgres-segundo-qa-database/' config.yaml
+
+      - name: Commit synchronization when production changed
+        run: |
+          rm -rf .prod-database
+          if [ -z "$(git status --porcelain --untracked-files=all -- sql config.yaml)" ]; then
+            echo "QA já está sincronizado com o prod."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sql config.yaml
+          git commit -m "chore: sincroniza SQL com prod"
+          git push origin HEAD:main
+          gh workflow run apply-sql-on-main.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
