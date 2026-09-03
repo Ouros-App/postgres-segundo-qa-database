@@ -8,6 +8,7 @@ on:
 permissions:
   actions: write
   contents: write
+  pull-requests: write
 
 concurrency:
   group: sync-prod-sql
@@ -45,11 +46,26 @@ jobs:
             echo "QA já está sincronizado com o prod."
             exit 0
           fi
+
+          sync_branch="automation/sync-prod-sql"
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$sync_branch"
           git add sql config.yaml
           git commit -m "chore: sincroniza SQL com prod"
-          git push origin HEAD:main
-          gh workflow run apply-sql-on-main.yml --ref main
+          git push --force-with-lease origin "HEAD:$sync_branch"
+
+          existing_pr="$(gh pr list --head "$sync_branch" --base main --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing_pr" ]; then
+            echo "PR #$existing_pr atualizado com o estado mais recente do prod."
+            exit 0
+          fi
+
+          gh pr create \
+            --base main \
+            --head "$sync_branch" \
+            --title "chore: sincroniza SQL com prod" \
+            --body "Sincronização automática do SQL e da ordem de execução a partir de \`postgres-segundo-prod-database\`."
         env:
           GH_TOKEN: ${{ github.token }}
