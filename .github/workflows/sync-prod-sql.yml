@@ -8,7 +8,6 @@ on:
 permissions:
   actions: write
   contents: write
-  pull-requests: write
 
 concurrency:
   group: sync-prod-sql
@@ -23,6 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
+          token: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
 
       - name: Checkout production database repository
         uses: actions/checkout@v4
@@ -33,39 +33,52 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Mirror SQL and execution order
+      - name: Check whether SQL changed
+        id: changes
+        shell: bash
         run: |
-          rsync -a --delete .prod-database/sql/ sql/
-          cp .prod-database/config.yaml config.yaml
-          sed -i 's/^project: postgres-segundo-prod-database$/project: postgres-segundo-qa-database/' config.yaml
+          set -euo pipefail
 
-      - name: Commit synchronization when production changed
-        run: |
-          rm -rf .prod-database
-          if [ -z "$(git status --porcelain --untracked-files=all -- sql config.yaml)" ]; then
-            echo "QA já está sincronizado com o prod."
+          cp .prod-database/config.yaml /tmp/prod-config.yaml
+          sed -i 's/^project: postgres-segundo-prod-database$/project: postgres-segundo-qa-database/' /tmp/prod-config.yaml
+
+          sql_changed=false
+          config_changed=false
+
+          if ! diff -qr .prod-database/sql sql >/dev/null; then
+            sql_changed=true
+          fi
+
+          if ! cmp -s /tmp/prod-config.yaml config.yaml; then
+            config_changed=true
+          fi
+
+          if [ "$sql_changed" = false ] && [ "$config_changed" = false ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "QA já está sincronizado com o prod; nenhuma escrita será feita."
             exit 0
           fi
 
-          sync_branch="automation/sync-prod-sql"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "Mudanças detectadas; sincronização será executada."
+
+      - name: Mirror SQL and execution order
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          rsync -a --delete .prod-database/sql/ sql/
+          cp /tmp/prod-config.yaml config.yaml
+
+      - name: Commit synchronization to main
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          SYNC_PUSH_TOKEN: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
+        run: |
+          rm -rf .prod-database
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -B "$sync_branch"
           git add sql config.yaml
           git commit -m "chore: sincroniza SQL com prod"
-          git push --force-with-lease origin "HEAD:$sync_branch"
 
-          existing_pr="$(gh pr list --head "$sync_branch" --base main --state open --json number --jq '.[0].number // empty')"
-          if [ -n "$existing_pr" ]; then
-            echo "PR #$existing_pr atualizado com o estado mais recente do prod."
-            exit 0
-          fi
-
-          gh pr create \
-            --base main \
-            --head "$sync_branch" \
-            --title "chore: sincroniza SQL com prod" \
-            --body "Sincronização automática do SQL e da ordem de execução a partir de \`postgres-segundo-prod-database\`."
-        env:
-          GH_TOKEN: ${{ github.token }}
+          git remote set-url origin "https://x-access-token:${SYNC_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:main
