@@ -14,6 +14,8 @@ database:
   sql_path: sql
   version_table: controle_versoes
   version_schema_file: versionamento.sql
+  # Adicione os arquivos na ordem em que devem ser executados.
+  # mode: once | on_change | always | never
   execution_order:
     - file: banco_ouros_fisico.sql
       mode: on_change
@@ -36,7 +38,11 @@ database:
             WHERE actual.document_number = expected.document_number
           )
         )
+    - file: dataload_lots_farm-owners.sql
+      mode: once
     - file: atualiza_password.sql
       mode: once
     - file: midas-user.sql
+      mode: on_change
+    - file: midas-resource-import.sql
       mode: on_change
