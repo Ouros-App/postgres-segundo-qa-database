@@ -21,6 +21,7 @@ database:
       mode: once
     - file: dataload_inicial.sql
       mode: once
+      baseline_query: "SELECT COUNT(*) = 20 FROM company_employees WHERE document_number >= '20000000001' AND document_number <= '20000000020'"
     - file: atualiza_password.sql
       mode: once
     - file: midas-user.sql
