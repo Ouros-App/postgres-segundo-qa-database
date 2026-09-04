@@ -81,8 +81,9 @@ class ApplySqlTest(unittest.TestCase):
             for path, _mode, baseline_query in entries
             if path.name == "dataload_inicial.sql"
         )
-        self.assertIn("20000000001", dataload_baseline)
-        self.assertIn("20000000020", dataload_baseline)
+        expected_documents = [f"200000000{i:02d}" for i in range(1, 21)]
+        for document_number in expected_documents:
+            self.assertIn(f"('{document_number}')", dataload_baseline)
 
 
 if __name__ == "__main__":
