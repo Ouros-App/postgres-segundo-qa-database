@@ -67,15 +67,22 @@ class ApplySqlTest(unittest.TestCase):
         cfg = load_config(root)
         entries = sql_entries(root, cfg)
         self.assertEqual(
-            [(path.name, mode) for path, mode in entries],
+            [(path.name, mode, baseline_query is not None) for path, mode, baseline_query in entries],
             [
-                ("banco_ouros_fisico.sql", "on_change"),
-                ("atualiza_lots_farm-owners.sql", "once"),
-                ("dataload_inicial.sql", "once"),
-                ("atualiza_password.sql", "once"),
-                ("midas-user.sql", "on_change"),
+                ("banco_ouros_fisico.sql", "on_change", False),
+                ("atualiza_lots_farm-owners.sql", "once", False),
+                ("dataload_inicial.sql", "once", True),
+                ("atualiza_password.sql", "once", False),
+                ("midas-user.sql", "on_change", False),
             ],
         )
+        dataload_baseline = next(
+            baseline_query
+            for path, _mode, baseline_query in entries
+            if path.name == "dataload_inicial.sql"
+        )
+        self.assertIn("20000000001", dataload_baseline)
+        self.assertIn("20000000020", dataload_baseline)
 
 
 if __name__ == "__main__":
