@@ -42,7 +42,8 @@ def begin_run(conn, qa_commit: str, prod_commit: str) -> int:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO qa_reconciliation_runs (qa_commit, prod_commit) VALUES (%s, %s) RETURNING id",
+                "INSERT INTO qa_reconciliation_runs (qa_commit, prod_commit) "
+                "VALUES (%s, %s) RETURNING id",
                 (qa_commit, prod_commit),
             )
             run_id = cur.fetchone()[0]
@@ -70,19 +71,20 @@ def record_result(
     try:
         with conn.cursor() as cur:
             cur.execute(
-            "INSERT INTO qa_reconciliation_items "
-            "(run_id, arquivo, checksum, status, reason, error_code, error_detail, applied_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, CASE WHEN %s THEN NOW() ELSE NULL END)",
-            (run_id, identity, checksum, status, reason, error_code, error_detail, applied),
-        )
+                "INSERT INTO qa_reconciliation_items "
+                "(run_id, arquivo, checksum, status, reason, error_code, error_detail, applied_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, CASE WHEN %s THEN NOW() ELSE NULL END)",
+                (run_id, identity, checksum, status, reason, error_code, error_detail, applied),
+            )
             cur.execute(
                 "INSERT INTO qa_reconciliation_state "
-            "(arquivo, checksum, status, prod_commit, last_error, last_attempt_at, last_applied_at) "
-            "VALUES (%s, %s, %s, %s, %s, NOW(), CASE WHEN %s THEN NOW() ELSE NULL END) "
-            "ON CONFLICT (arquivo) DO UPDATE SET checksum = EXCLUDED.checksum, "
-            "status = EXCLUDED.status, prod_commit = EXCLUDED.prod_commit, "
-            "last_error = EXCLUDED.last_error, last_attempt_at = NOW(), "
-            "last_applied_at = CASE WHEN %s THEN NOW() ELSE qa_reconciliation_state.last_applied_at END",
+                "(arquivo, checksum, status, prod_commit, last_error, last_attempt_at, last_applied_at) "
+                "VALUES (%s, %s, %s, %s, %s, NOW(), CASE WHEN %s THEN NOW() ELSE NULL END) "
+                "ON CONFLICT (arquivo) DO UPDATE SET checksum = EXCLUDED.checksum, "
+                "status = EXCLUDED.status, prod_commit = EXCLUDED.prod_commit, "
+                "last_error = EXCLUDED.last_error, last_attempt_at = NOW(), "
+                "last_applied_at = CASE WHEN %s THEN NOW() "
+                "ELSE qa_reconciliation_state.last_applied_at END",
                 (identity, checksum, status, prod_commit, error_detail, applied, applied),
             )
         conn.commit()
