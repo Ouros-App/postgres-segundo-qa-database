@@ -23,6 +23,7 @@ jobs:
         with:
           ref: main
           token: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
+          persist-credentials: false
 
       - name: Checkout production database repository
         uses: actions/checkout@v4
@@ -50,6 +51,7 @@ jobs:
           if ! cmp -s /tmp/prod-config.yaml config.yaml; then changed=true; echo "Execution-order drift detected"; fi
           if ! cmp -s .prod-database/scripts/apply_sql.py scripts/apply_sql.py; then changed=true; echo "Migration-engine drift detected"; fi
           if ! cmp -s .prod-database/requirements.txt requirements.txt; then changed=true; echo "Dependency drift detected"; fi
+          if ! cmp -s .prod-database/tests/test_apply_sql.py tests/test_apply_sql.py; then changed=true; echo "Migration-engine test drift detected"; fi
           if ! cmp -s /tmp/upstream.lock upstream.lock; then changed=true; echo "Production commit changed"; fi
 
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
@@ -62,7 +64,23 @@ jobs:
           cp /tmp/prod-config.yaml config.yaml
           cp .prod-database/scripts/apply_sql.py scripts/apply_sql.py
           cp .prod-database/requirements.txt requirements.txt
+          cp .prod-database/tests/test_apply_sql.py tests/test_apply_sql.py
           cp /tmp/upstream.lock upstream.lock
+
+      - name: Set up Python for contract validation
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate reconciler against synced engine
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m compileall -q scripts
+          python -m unittest discover -s tests -v
 
       - name: Commit synchronization to main
         if: steps.changes.outputs.changed == 'true'
@@ -73,7 +91,7 @@ jobs:
           rm -rf .prod-database
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add sql config.yaml scripts/apply_sql.py requirements.txt upstream.lock
+          git add sql config.yaml scripts/apply_sql.py requirements.txt tests/test_apply_sql.py upstream.lock
           git commit -m "chore: reconcile QA contract with prod"
           git remote set-url origin "https://x-access-token:${SYNC_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin HEAD:main
