@@ -1,9 +1,11 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from scripts import reconcile_sql
 from scripts.reconcile.db import acquire_advisory_lock, safe_rollback
 from scripts.reconcile.policy import (
     dependencies_satisfied,
@@ -198,6 +200,21 @@ class ReconcileSqlTest(unittest.TestCase):
                 root = Path(tmp)
                 (root / "upstream.lock").write_text(json.dumps(payload), encoding="utf-8")
                 self.assertEqual(read_upstream_commit(root), "unknown")
+
+    def test_reconcile_rejects_invalid_upstream_before_database_changes(self) -> None:
+        """Verify invalid provenance stops reconciliation before database provisioning."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "upstream.lock").write_text("{}", encoding="utf-8")
+            with (
+                patch.dict(os.environ, {"GITHUB_SHA": "b" * 40}),
+                patch("scripts.reconcile_sql.load_config", return_value={}),
+                patch("scripts.reconcile_sql.load_reconcile_policy", return_value={}),
+                patch("scripts.reconcile_sql.ensure_database") as ensure_database,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "upstream.lock"):
+                    reconcile_sql.reconcile(root)
+                ensure_database.assert_not_called()
 
     def test_advisory_lock_uses_bounded_try_lock(self) -> None:
         """Verify advisory lock acquisition retries for a bounded period."""
