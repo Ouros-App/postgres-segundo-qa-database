@@ -7,6 +7,12 @@ from typing import Any
 def ensure_reconciliation_tables(cur) -> None:
     """Create durable reconciliation run and latest-state tables."""
     cur.execute(
+        "CREATE TABLE IF NOT EXISTS controle_scripts_sql ("
+        "arquivo TEXT PRIMARY KEY, checksum VARCHAR(64) NOT NULL, "
+        "commit_id VARCHAR(64) NOT NULL, "
+        "executado_em TIMESTAMPTZ NOT NULL DEFAULT NOW())"
+    )
+    cur.execute(
         "CREATE TABLE IF NOT EXISTS qa_reconciliation_runs ("
         "id BIGSERIAL PRIMARY KEY, qa_commit VARCHAR(64) NOT NULL, "
         "prod_commit VARCHAR(64) NOT NULL, started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
