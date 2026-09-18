@@ -1,4 +1,4 @@
-name: Apply SQL On Main
+name: Reconcile SQL On Main
 
 on:
   push:
@@ -7,7 +7,11 @@ on:
     paths:
       - "sql/**"
       - "config.yaml"
+      - "reconcile.yaml"
+      - "upstream.lock"
       - "scripts/apply_sql.py"
+      - "scripts/reconcile_sql.py"
+      - "scripts/reconcile/**"
       - "requirements.txt"
   workflow_dispatch:
 
@@ -15,12 +19,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: apply-sql-main
+  group: reconcile-sql-main
   cancel-in-progress: false
 
 jobs:
-  apply:
-    name: apply
+  reconcile:
+    name: reconcile
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -41,7 +45,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Apply SQL
+      - name: Reconcile production SQL contract with QA
         env:
           POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
           POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
@@ -51,5 +55,7 @@ jobs:
           POSTGRES_ROOT_DB: ${{ secrets.POSTGRES_ROOT_DB }}
           POSTGRES_ROOT_USER: ${{ secrets.POSTGRES_ROOT_USER }}
           POSTGRES_ROOT_PASSWORD: ${{ secrets.POSTGRES_ROOT_PASSWORD }}
+          ANALYTICS_SYNC_PASSWORD: ${{ secrets.ANALYTICS_SYNC_PASSWORD }}
+          MS_AUTH_SERVICE_PASSWORD: ${{ secrets.MS_AUTH_SERVICE_PASSWORD }}
           GITHUB_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-        run: python scripts/apply_sql.py
+        run: python scripts/reconcile_sql.py
