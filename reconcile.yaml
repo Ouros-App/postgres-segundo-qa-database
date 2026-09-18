@@ -1,0 +1,62 @@
+reconciliation:
+  # QA is mutable by design. Production remains authoritative for managed schema
+  # and security objects, while application/test data is preserved.
+  continue_on_error: true
+  reapply_on_change: true
+  preserve_data: true
+  unexpected_objects: report_only
+
+  migrations:
+    banco_ouros_fisico.sql:
+      critical: true
+
+    atualiza_updated_at_analytics.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+
+    analytics_sync_user.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+        - atualiza_updated_at_analytics.sql
+
+    keycloak_user_link.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+
+    ms_auth_service.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+        - keycloak_user_link.sql
+
+    triggers_logs.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+
+    atualiza_lots_farm-owners.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+
+    atualiza_farms-chicken-left.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+
+    dataload_inicial.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+
+    views_galinhas_consumo.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+
+    atualiza_password.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+
+    midas-user.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+
+    midas-resource-import.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+        - midas-user.sql
