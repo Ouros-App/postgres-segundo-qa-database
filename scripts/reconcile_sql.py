@@ -128,25 +128,28 @@ def reconcile(root: Path) -> str:
         if mode != "never":
             referenced_roles.update(extract_required_roles(path.read_text(encoding="utf-8")))
 
-    roles_before = inspect_roles_with_bootstrap(cfg, referenced_roles, connect)
-    ensure_database(cfg)
-    roles_after = inspect_roles_with_bootstrap(cfg, referenced_roles, connect)
-    roles_repaired = sorted((referenced_roles - roles_before) & roles_after)
-
     db = cfg["database"]
-    conn = connect(cfg, db["name"], db["owner"]["user"], db["owner"]["password"])
+    boot = db["bootstrap"]
+    bootstrap_conn = connect(cfg, boot["db"], boot["user"], boot["password"])
+    conn = None
     results: dict[str, dict] = {}
     critical_failed = False
     locked = False
     try:
+        acquire_advisory_lock(bootstrap_conn, ADVISORY_LOCK_ID)
+        locked = True
+
+        roles_before = inspect_roles_with_bootstrap(cfg, referenced_roles, connect)
+        ensure_database(cfg)
+        roles_after = inspect_roles_with_bootstrap(cfg, referenced_roles, connect)
+        roles_repaired = sorted((referenced_roles - roles_before) & roles_after)
+
+        conn = connect(cfg, db["name"], db["owner"]["user"], db["owner"]["password"])
         with conn.cursor() as cur:
             configure_transaction_safety(cur)
             ensure_version_table(cur, root, cfg)
             ensure_reconciliation_tables(cur)
         conn.commit()
-
-        acquire_advisory_lock(conn, ADVISORY_LOCK_ID)
-        locked = True
 
         run_id = begin_run(conn, qa_commit, prod_commit)
         core_before = missing_core_tables(conn, CORE_TABLES)
@@ -234,7 +237,8 @@ def reconcile(root: Path) -> str:
                     checksum=checksum, reason=reason,
                 )
             except Exception as exc:
-                safe_rollback(conn)
+                if not safe_rollback(conn):
+                    raise
                 code, detail = error_payload(exc)
                 dependency_results = {
                     dep: results[dep]["status"]
@@ -273,14 +277,16 @@ def reconcile(root: Path) -> str:
         write_github_summary(summary, prod_commit, qa_commit, roles_repaired, core_before, core_after)
         return overall
     finally:
+        if conn is not None:
+            conn.close()
         if locked:
             try:
-                with conn.cursor() as cur:
+                with bootstrap_conn.cursor() as cur:
                     cur.execute("SELECT pg_advisory_unlock(%s)", (ADVISORY_LOCK_ID,))
-                conn.commit()
+                bootstrap_conn.commit()
             except psycopg2.Error:
-                safe_rollback(conn)
-        conn.close()
+                safe_rollback(bootstrap_conn)
+        bootstrap_conn.close()
 
 
 def main() -> None:
