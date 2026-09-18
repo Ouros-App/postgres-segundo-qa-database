@@ -110,10 +110,11 @@ class ReconcileSqlTest(unittest.TestCase):
         REVOKE ALL ON TABLE farms FROM midas_ro;
         GRANT SELECT ON TABLE farms TO PUBLIC;
         GRANT SELECT ON TABLE farms TO "Analytics Sync RO";
+        GRANT SELECT ON TABLE farms TO Analytics_Mixed_RO;
         """
         self.assertEqual(
             extract_required_roles(sql),
-            {"analytics_sync_ro", "midas_ro", "Analytics Sync RO"},
+            {"analytics_sync_ro", "midas_ro", "Analytics Sync RO", "analytics_mixed_ro"},
         )
 
     def test_role_preflight_ignores_comments_and_literals(self) -> None:
@@ -215,6 +216,42 @@ class ReconcileSqlTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "upstream.lock"):
                     reconcile_sql.reconcile(root)
                 ensure_database.assert_not_called()
+
+    def test_bootstrap_lock_precedes_database_provisioning(self) -> None:
+        """Verify provisioning never starts when the bootstrap lock cannot be acquired."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "upstream.lock").write_text(
+                json.dumps({
+                    "repository": "Ouros-App/postgres-segundo-prod-database",
+                    "branch": "main",
+                    "commit": "a" * 40,
+                }),
+                encoding="utf-8",
+            )
+            bootstrap_conn = unittest.mock.MagicMock()
+            with (
+                patch.dict(os.environ, {"GITHUB_SHA": "b" * 40}),
+                patch("scripts.reconcile_sql.load_config", return_value={
+                    "database": {
+                        "bootstrap": {"db": "postgres", "user": "root", "password": "secret"},
+                        "name": "qa",
+                        "owner": {"user": "qa", "password": "qa-secret"},
+                    }
+                }),
+                patch("scripts.reconcile_sql.load_reconcile_policy", return_value={}),
+                patch("scripts.reconcile_sql.sql_entries", return_value=[]),
+                patch("scripts.reconcile_sql.connect", return_value=bootstrap_conn),
+                patch(
+                    "scripts.reconcile_sql.acquire_advisory_lock",
+                    side_effect=TimeoutError("lock busy"),
+                ),
+                patch("scripts.reconcile_sql.ensure_database") as ensure_database,
+            ):
+                with self.assertRaisesRegex(TimeoutError, "lock busy"):
+                    reconcile_sql.reconcile(root)
+                ensure_database.assert_not_called()
+                bootstrap_conn.close.assert_called_once()
 
     def test_advisory_lock_uses_bounded_try_lock(self) -> None:
         """Verify advisory lock acquisition retries for a bounded period."""
