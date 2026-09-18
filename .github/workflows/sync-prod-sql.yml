@@ -1,4 +1,4 @@
-name: Sync SQL From Production
+name: Sync Contract From Production
 
 on:
   schedule:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sync-prod-sql
+  group: sync-prod-contract
   cancel-in-progress: false
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Check whether SQL changed
+      - name: Build production contract snapshot
         id: changes
         shell: bash
         run: |
@@ -42,43 +42,38 @@ jobs:
           cp .prod-database/config.yaml /tmp/prod-config.yaml
           sed -i 's/^project: postgres-segundo-prod-database$/project: postgres-segundo-qa-database/' /tmp/prod-config.yaml
 
-          sql_changed=false
-          config_changed=false
+          prod_commit="$(git -C .prod-database rev-parse HEAD)"
+          printf '{\n  "repository": "Ouros-App/postgres-segundo-prod-database",\n  "branch": "main",\n  "commit": "%s"\n}\n' "$prod_commit" > /tmp/upstream.lock
 
-          if ! diff -qr .prod-database/sql sql >/dev/null; then
-            sql_changed=true
-          fi
+          changed=false
+          if ! diff -qr .prod-database/sql sql >/dev/null; then changed=true; echo "SQL drift detected"; fi
+          if ! cmp -s /tmp/prod-config.yaml config.yaml; then changed=true; echo "Execution-order drift detected"; fi
+          if ! cmp -s .prod-database/scripts/apply_sql.py scripts/apply_sql.py; then changed=true; echo "Migration-engine drift detected"; fi
+          if ! cmp -s .prod-database/requirements.txt requirements.txt; then changed=true; echo "Dependency drift detected"; fi
+          if ! cmp -s /tmp/upstream.lock upstream.lock; then changed=true; echo "Production commit changed"; fi
 
-          if ! cmp -s /tmp/prod-config.yaml config.yaml; then
-            config_changed=true
-          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
 
-          if [ "$sql_changed" = false ] && [ "$config_changed" = false ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "QA já está sincronizado com o prod; nenhuma escrita será feita."
-            exit 0
-          fi
-
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "Mudanças detectadas; sincronização será executada."
-
-      - name: Mirror SQL and execution order
+      - name: Mirror production contract
         if: steps.changes.outputs.changed == 'true'
         run: |
+          set -euo pipefail
           rsync -a --delete .prod-database/sql/ sql/
           cp /tmp/prod-config.yaml config.yaml
+          cp .prod-database/scripts/apply_sql.py scripts/apply_sql.py
+          cp .prod-database/requirements.txt requirements.txt
+          cp /tmp/upstream.lock upstream.lock
 
       - name: Commit synchronization to main
         if: steps.changes.outputs.changed == 'true'
         env:
           SYNC_PUSH_TOKEN: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
         run: |
+          set -euo pipefail
           rm -rf .prod-database
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add sql config.yaml
-          git commit -m "chore: sincroniza SQL com prod"
-
+          git add sql config.yaml scripts/apply_sql.py requirements.txt upstream.lock
+          git commit -m "chore: reconcile QA contract with prod"
           git remote set-url origin "https://x-access-token:${SYNC_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin HEAD:main
