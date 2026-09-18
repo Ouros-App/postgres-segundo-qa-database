@@ -29,7 +29,6 @@ try:
     )
     from scripts.reconcile.db import (
         acquire_advisory_lock,
-        acquire_advisory_lock,
         apply_migration,
         baseline_status,
         check_missing_roles,
@@ -77,6 +76,7 @@ except ModuleNotFoundError:
         validate_core_schema,
     )
     from reconcile.db import (  # type: ignore
+        acquire_advisory_lock,
         apply_migration,
         baseline_status,
         check_missing_roles,
