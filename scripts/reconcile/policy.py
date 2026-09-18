@@ -141,7 +141,7 @@ def _decode_role_identifier(token: str) -> tuple[str, bool]:
     token = token.strip()
     if token.startswith('"') and token.endswith('"'):
         return token[1:-1].replace('""', '"'), True
-    return token, False
+    return token.lower(), False
 
 
 def _statement_roles(statement: str) -> set[str]:
