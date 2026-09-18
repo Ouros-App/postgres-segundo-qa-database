@@ -111,6 +111,7 @@ ADVISORY_LOCK_ID = 84729341
 
 
 def reconcile(root: Path) -> str:
+    """Reconcile the production SQL contract against the mutable QA database."""
     load_dotenv(root / ".env")
     cfg = load_config(root)
     policy = load_reconcile_policy(root)
@@ -144,11 +145,11 @@ def reconcile(root: Path) -> str:
             ensure_reconciliation_tables(cur)
         conn.commit()
 
-        run_id = begin_run(conn, qa_commit, prod_commit)
-        core_before = missing_core_tables(conn, CORE_TABLES)
-
         acquire_advisory_lock(conn, ADVISORY_LOCK_ID)
         locked = True
+
+        run_id = begin_run(conn, qa_commit, prod_commit)
+        core_before = missing_core_tables(conn, CORE_TABLES)
 
         for path, mode, baseline_query in entries:
             identity = path.relative_to(root / db["sql_path"]).as_posix()
@@ -283,6 +284,7 @@ def reconcile(root: Path) -> str:
 
 
 def main() -> None:
+    """Run reconciliation and fail the process only for a FAILED result."""
     status = reconcile(Path(__file__).resolve().parents[1])
     if status == "FAILED":
         raise SystemExit(1)
