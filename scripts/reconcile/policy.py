@@ -71,6 +71,7 @@ def _mask_sql_comments_and_literals(content: str) -> str:
     block_depth = 0
 
     def mask(start: int, end: int) -> None:
+        """Replace token contents with spaces while preserving newlines."""
         for pos in range(start, end):
             if out[pos] != "\n":
                 out[pos] = " "
@@ -136,6 +137,7 @@ def _mask_sql_comments_and_literals(content: str) -> str:
 
 
 def _decode_role_identifier(token: str) -> tuple[str, bool]:
+    """Decode a PostgreSQL role identifier and report whether it was quoted."""
     token = token.strip()
     if token.startswith('"') and token.endswith('"'):
         return token[1:-1].replace('""', '"'), True
@@ -143,6 +145,7 @@ def _decode_role_identifier(token: str) -> tuple[str, bool]:
 
 
 def _statement_roles(statement: str) -> set[str]:
+    """Extract role targets from one masked GRANT or REVOKE statement."""
     stripped = statement.strip()
     if not stripped:
         return set()
