@@ -28,6 +28,8 @@ try:
         validate_core_schema,
     )
     from scripts.reconcile.db import (
+        acquire_advisory_lock,
+        acquire_advisory_lock,
         apply_migration,
         baseline_status,
         check_missing_roles,
@@ -36,6 +38,7 @@ try:
         inspect_roles_with_bootstrap,
         missing_core_tables,
         record_baseline,
+        safe_rollback,
         transactional_probe,
     )
     from scripts.reconcile.policy import (
@@ -82,6 +85,7 @@ except ModuleNotFoundError:
         inspect_roles_with_bootstrap,
         missing_core_tables,
         record_baseline,
+        safe_rollback,
         transactional_probe,
     )
     from reconcile.policy import (  # type: ignore
@@ -114,6 +118,8 @@ def reconcile(root: Path) -> str:
     if qa_commit == "unknown":
         raise RuntimeError("Nao foi possivel identificar o commit atual do QA")
     prod_commit = read_upstream_commit(root)
+    if prod_commit == "unknown":
+        raise RuntimeError("upstream.lock ausente, invalido ou nao aponta para um commit exato do prod")
 
     referenced_roles: set[str] = set()
     entries = sql_entries(root, cfg)
@@ -141,9 +147,7 @@ def reconcile(root: Path) -> str:
         run_id = begin_run(conn, qa_commit, prod_commit)
         core_before = missing_core_tables(conn, CORE_TABLES)
 
-        with conn.cursor() as cur:
-            cur.execute("SELECT pg_advisory_lock(%s)", (ADVISORY_LOCK_ID,))
-        conn.commit()
+        acquire_advisory_lock(conn, ADVISORY_LOCK_ID)
         locked = True
 
         for path, mode, baseline_query in entries:
@@ -229,9 +233,14 @@ def reconcile(root: Path) -> str:
                     checksum=checksum, reason=reason,
                 )
             except Exception as exc:
-                conn.rollback()
+                safe_rollback(conn)
                 code, detail = error_payload(exc)
-                status = failure_status(exc, {name: item["status"] for name, item in results.items()})
+                dependency_results = {
+                    dep: results[dep]["status"]
+                    for dep in depends_on
+                    if dep in results
+                }
+                status = failure_status(exc, dependency_results)
                 if critical:
                     status = "FAILED"
                     critical_failed = True
@@ -269,7 +278,7 @@ def reconcile(root: Path) -> str:
                     cur.execute("SELECT pg_advisory_unlock(%s)", (ADVISORY_LOCK_ID,))
                 conn.commit()
             except psycopg2.Error:
-                conn.rollback()
+                safe_rollback(conn)
         conn.close()
 
 
