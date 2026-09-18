@@ -6,16 +6,70 @@ import subprocess
 from pathlib import Path
 
 import psycopg2
+from psycopg2 import sql
 import yaml
 from dotenv import load_dotenv
 
 
 ENV_RE = re.compile(r"\$\{([A-Z0-9_]+)\}")
+SQL_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+SQL_LINE_COMMENT_RE = re.compile(r"--[^\n]*")
+UNSAFE_SQL_PATTERNS = (
+    ("UPDATE", re.compile(r"\bUPDATE\s+(?:ONLY\s+)?\S+(?:\s+AS\s+\S+)?\s+SET\b", re.IGNORECASE)),
+    ("DELETE", re.compile(r"\bDELETE\s+FROM\b", re.IGNORECASE)),
+    ("TRUNCATE", re.compile(r"\bTRUNCATE\b", re.IGNORECASE)),
+    ("MERGE", re.compile(r"\bMERGE\s+INTO\b", re.IGNORECASE)),
+    ("UPSERT UPDATE", re.compile(r"\bON\s+CONFLICT\b[\s\S]*?\bDO\s+UPDATE\b", re.IGNORECASE)),
+    ("DROP DATA OBJECT", re.compile(r"\bDROP\s+(?:DATABASE|SCHEMA|TABLE|VIEW)\b", re.IGNORECASE)),
+    ("DROP COLUMN", re.compile(r"\bDROP\s+COLUMN\b", re.IGNORECASE)),
+)
+CORE_TABLES = (
+    "addresses",
+    "enterprises",
+    "farms",
+    "farm_owners",
+    "company_employees",
+    "water_registries",
+    "energy_registries",
+    "lots",
+)
 
 
 def qident(name: str) -> str:
     """Quote a PostgreSQL identifier safely."""
     return '"' + name.replace('"', '""') + '"'
+
+
+def strip_sql_comments(content: str) -> str:
+    """Remove SQL comments before applying the automatic-migration safety policy."""
+    content = SQL_BLOCK_COMMENT_RE.sub(" ", content)
+    return SQL_LINE_COMMENT_RE.sub(" ", content)
+
+
+def assert_safe_sql(content: str, identity: str) -> None:
+    """Reject automatic SQL that can overwrite or delete application data."""
+    checked = strip_sql_comments(content)
+    for label, pattern in UNSAFE_SQL_PATTERNS:
+        if pattern.search(checked):
+            raise RuntimeError(
+                f"SQL inseguro bloqueado em {identity}: {label}. "
+                "Migrations automaticas devem ser aditivas e preservar dados de usuarios."
+            )
+
+
+def assert_safe_baseline_query(query: str, identity: str) -> None:
+    """Baseline checks are read-only SELECT statements."""
+    checked = strip_sql_comments(query).strip()
+    if not re.match(r"^SELECT\b", checked, flags=re.IGNORECASE):
+        raise RuntimeError(f"baseline_query de {identity} deve ser SELECT read-only")
+    assert_safe_sql(checked, f"baseline_query:{identity}")
+
+
+def configure_transaction_safety(cur) -> None:
+    """Prefer a failed deploy over long locks that make the application unavailable."""
+    cur.execute("SET LOCAL lock_timeout = '5s'")
+    cur.execute("SET LOCAL statement_timeout = '120s'")
+    cur.execute("SET LOCAL idle_in_transaction_session_timeout = '60s'")
 
 
 def load_config(root: Path) -> dict:
@@ -42,6 +96,19 @@ def load_config(root: Path) -> dict:
     return expand(yaml.safe_load(raw))
 
 
+def expand_sql_secrets(content: str, cur) -> str:
+    """Expand SQL placeholders as literals prepared with the active connection."""
+    def replace(match):
+        """Resolve one SQL placeholder as a connection-aware quoted literal."""
+        name = match.group(1)
+        value = os.getenv(name)
+        if value is None:
+            raise RuntimeError(f"Variavel de ambiente obrigatoria ausente no SQL: {name}")
+        return sql.Literal(value).as_string(cur)
+
+    return ENV_RE.sub(replace, content)
+
+
 def git_value(root: Path, *args: str) -> str:
     """Run a Git command and return its output or 'unknown' on failure."""
     res = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=False)
@@ -54,8 +121,59 @@ def connect(cfg: dict, dbname: str, user: str, password: str):
     return psycopg2.connect(host=db["host"], port=db["port"], dbname=dbname, user=user, password=password)
 
 
+def configure_service_role(
+    cur,
+    db_name: str,
+    role_name: str,
+    connection_limit: int,
+    password: str | None = None,
+    search_path: str = "public, pg_catalog",
+    login: bool | None = True,
+) -> None:
+    """Create and harden a service role without requiring bootstrap SUPERUSER."""
+    role = qident(role_name)
+    cur.execute(
+        "SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls "
+        "FROM pg_roles WHERE rolname = %s",
+        (role_name,),
+    )
+    role_state = cur.fetchone()
+    if role_state is None:
+        cur.execute(f"CREATE ROLE {role} NOLOGIN")
+        print(f"[CREATE] role de servico {role_name}")
+    elif any(role_state):
+        raise RuntimeError(
+            f"Role de servico {role_name} possui privilegios administrativos; "
+            "recusando alterar automaticamente sem SUPERUSER"
+        )
+
+    login_clause = "LOGIN " if login is True else "NOLOGIN " if login is False else ""
+    cur.execute(
+        f"ALTER ROLE {role} {login_clause}NOINHERIT NOCREATEDB "
+        f"NOCREATEROLE CONNECTION LIMIT {connection_limit}"
+    )
+    if password:
+        cur.execute(f"ALTER ROLE {role} PASSWORD %s", (password,))
+
+    cur.execute(
+        "SELECT parent_role.rolname "
+        "FROM pg_auth_members membership "
+        "JOIN pg_roles parent_role ON parent_role.oid = membership.roleid "
+        "JOIN pg_roles member_role ON member_role.oid = membership.member "
+        "WHERE member_role.rolname = %s",
+        (role_name,),
+    )
+    for (parent_role,) in cur.fetchall():
+        cur.execute(f"REVOKE {qident(parent_role)} FROM {role}")
+
+    cur.execute(f"REVOKE ALL PRIVILEGES ON DATABASE {qident(db_name)} FROM {role}")
+    cur.execute(f"GRANT CONNECT ON DATABASE {qident(db_name)} TO {role}")
+    cur.execute(f"ALTER ROLE {role} SET default_transaction_read_only = on")
+    cur.execute(f"ALTER ROLE {role} SET search_path = {search_path}")
+
+
 def ensure_database(cfg: dict) -> None:
-    """Create the application role and database when they do not exist."""
+    """Create the application database and provision privileged service roles."""
     db = cfg["database"]
     boot = db["bootstrap"]
     owner = db["owner"]
@@ -66,9 +184,62 @@ def ensure_database(cfg: dict) -> None:
             cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (owner["user"],))
             if cur.fetchone() is None:
                 cur.execute(f"CREATE ROLE {qident(owner['user'])} LOGIN PASSWORD %s", (owner["password"],))
+                print("[CREATE] usuario proprietário")
+            else:
+                print("[SKIP] usuario proprietário: já existe")
+
             cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db["name"],))
             if cur.fetchone() is None:
                 cur.execute(f"CREATE DATABASE {qident(db['name'])} OWNER {qident(owner['user'])}")
+                print("[CREATE] banco de dados")
+            else:
+                print("[SKIP] banco de dados: já existe")
+
+            analytics_password = os.getenv("ANALYTICS_SYNC_PASSWORD")
+            configure_service_role(
+                cur,
+                db["name"],
+                "analytics_sync_ro",
+                3,
+                analytics_password,
+                login=True if analytics_password else None,
+            )
+            if not analytics_password:
+                print(
+                    "[WARN] ANALYTICS_SYNC_PASSWORD ausente; "
+                    "estado de login existente preservado (role novo permanece NOLOGIN)"
+                )
+
+            configure_service_role(
+                cur,
+                db["name"],
+                "midas_ro",
+                5,
+                search_path="midas, pg_catalog",
+            )
+            configure_service_role(
+                cur,
+                db["name"],
+                "midas_importer",
+                5,
+                search_path="midas, pg_catalog",
+                login=False,
+            )
+
+            auth_password = os.getenv("MS_AUTH_SERVICE_PASSWORD")
+            configure_service_role(
+                cur,
+                db["name"],
+                "ms_auth_service_ro",
+                5,
+                auth_password,
+                login=True if auth_password else None,
+            )
+            if not auth_password:
+                print(
+                    "[WARN] MS_AUTH_SERVICE_PASSWORD ausente; "
+                    "estado de login existente preservado (role novo permanece NOLOGIN)"
+                )
     finally:
         conn.close()
 
@@ -79,13 +250,18 @@ def ensure_version_table(cur, root: Path, cfg: dict) -> None:
     path = root / db["sql_path"] / db["version_schema_file"]
     if not path.is_file():
         raise FileNotFoundError(f"SQL de versionamento nao encontrado: {path}")
-    cur.execute(path.read_text(encoding="utf-8"))
+    content = path.read_text(encoding="utf-8")
+    assert_safe_sql(content, db["version_schema_file"])
+    cur.execute(content)
 
 
 def sql_entries(root: Path, cfg: dict) -> list[tuple[Path, str, str | None]]:
     """Validate configured SQL entries and return path, mode, and baseline query."""
     db = cfg["database"]
     sql_dir = root / db["sql_path"]
+    if not db["execution_order"]:
+        raise RuntimeError("Nenhum script SQL foi configurado em database.execution_order.")
+
     entries, seen = [], set()
     for item in db["execution_order"]:
         if isinstance(item, str):
@@ -125,7 +301,8 @@ def record_script(cur, identity: str, checksum: str, commit_id: str) -> None:
 
 
 def baseline_is_applied(cur, baseline_query: str, identity: str) -> bool:
-    """Run a baseline query and require exactly one row with one boolean column."""
+    """Run a read-only baseline query and require one boolean result."""
+    assert_safe_baseline_query(baseline_query, identity)
     cur.execute(baseline_query)
     if cur.description is None:
         raise RuntimeError(
@@ -146,6 +323,17 @@ def baseline_is_applied(cur, baseline_query: str, identity: str) -> bool:
     return baseline[0] is True
 
 
+def validate_core_schema(cur) -> None:
+    """Refuse to commit a migration batch if an application table disappeared."""
+    missing = []
+    for table in CORE_TABLES:
+        cur.execute("SELECT to_regclass(%s)", (f"public.{table}",))
+        if cur.fetchone()[0] is None:
+            missing.append(table)
+    if missing:
+        raise RuntimeError(f"Schema invalido apos migrations; tabelas ausentes: {', '.join(missing)}")
+
+
 def apply_sql_files(root: Path, cfg: dict, cur, commit_id: str) -> None:
     """Apply configured SQL files according to mode, checksum, and baseline state."""
     cur.execute("SELECT pg_advisory_xact_lock(84729341)")
@@ -155,8 +343,6 @@ def apply_sql_files(root: Path, cfg: dict, cur, commit_id: str) -> None:
 
     for path, mode, baseline_query in sql_entries(root, cfg):
         identity = path.relative_to(root / cfg["database"]["sql_path"]).as_posix()
-        content = path.read_text(encoding="utf-8")
-        checksum = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
         if mode == "never":
             print(f"[SKIP] {identity}: modo never")
@@ -165,28 +351,47 @@ def apply_sql_files(root: Path, cfg: dict, cur, commit_id: str) -> None:
         cur.execute("SELECT checksum FROM controle_scripts_sql WHERE arquivo = %s", (identity,))
         row = cur.fetchone()
 
-        if mode == "once" and row:
+        if mode == "once" and row and not baseline_query:
             print(f"[SKIP] {identity}: modo once")
             continue
 
-        if mode == "once" and not row and baseline_query:
+        raw_content = path.read_text(encoding="utf-8")
+        assert_safe_sql(raw_content, identity)
+
+        if mode == "once" and baseline_query:
             if baseline_is_applied(cur, baseline_query, identity):
+                checksum = hashlib.sha256(raw_content.encode("utf-8")).hexdigest()
                 print(f"[BASELINE] {identity}: dados existentes detectados; registrando sem reexecutar")
                 record_script(cur, identity, checksum, commit_id)
                 continue
+            if row:
+                print(f"[RECOVER] {identity}: historico existe, mas baseline esta ausente; reexecutando com banco vazio")
+
+        content = expand_sql_secrets(raw_content, cur)
+        checksum = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
         if mode == "on_change" and row and row[0] == checksum:
             print(f"[SKIP] {identity}: sem alteracoes")
             continue
 
-        reason = "modo always" if mode == "always" else "modo once" if mode == "once" else "arquivo novo" if not row else "conteudo alterado"
+        reason = (
+            "recuperacao de baseline"
+            if mode == "once" and baseline_query and row
+            else "modo always"
+            if mode == "always"
+            else "modo once"
+            if mode == "once"
+            else "arquivo novo"
+            if not row
+            else "conteudo alterado"
+        )
         print(f"[RUN] {identity}: {reason}")
         cur.execute(content)
         record_script(cur, identity, checksum, commit_id)
 
 
 def main() -> None:
-    """Bootstrap the database, apply SQL entries, and record the repository commit."""
+    """Bootstrap the database, atomically apply safe SQL, and record the commit."""
     root = Path(__file__).resolve().parents[1]
     load_dotenv(root / ".env")
     cfg = load_config(root)
@@ -201,8 +406,10 @@ def main() -> None:
     try:
         with conn:
             with conn.cursor() as cur:
+                configure_transaction_safety(cur)
                 ensure_version_table(cur, root, cfg)
                 apply_sql_files(root, cfg, cur, commit_id)
+                validate_core_schema(cur)
                 cur.execute(
                     f"INSERT INTO {qident(table)} (commit_id, comentario_commit) VALUES (%s, %s)",
                     (commit_id, commit_msg),
