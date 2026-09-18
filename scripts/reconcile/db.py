@@ -51,6 +51,7 @@ def acquire_advisory_lock(
 
 
 def get_recorded_checksum(conn, identity: str) -> str | None:
+    """Read the last applied checksum without leaving an open transaction."""
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT checksum FROM controle_scripts_sql WHERE arquivo = %s", (identity,))
@@ -61,6 +62,7 @@ def get_recorded_checksum(conn, identity: str) -> str | None:
 
 
 def check_missing_roles(conn, roles: set[str]) -> list[str]:
+    """Return referenced PostgreSQL roles that do not exist in the cluster."""
     if not roles:
         return []
     try:
@@ -91,6 +93,7 @@ def inspect_roles_with_bootstrap(cfg: dict, role_names: set[str], connect) -> se
 
 
 def missing_core_tables(conn, core_tables) -> list[str]:
+    """Report required public tables missing from the current QA schema."""
     missing: list[str] = []
     try:
         with conn.cursor() as cur:
@@ -104,6 +107,7 @@ def missing_core_tables(conn, core_tables) -> list[str]:
 
 
 def expand_content(conn, raw_content: str, expand_sql_secrets) -> str:
+    """Expand SQL secret placeholders using the active PostgreSQL adapter."""
     try:
         with conn.cursor() as cur:
             return expand_sql_secrets(raw_content, cur)
@@ -112,6 +116,7 @@ def expand_content(conn, raw_content: str, expand_sql_secrets) -> str:
 
 
 def baseline_status(conn, query: str, identity: str, configure_transaction_safety, baseline_is_applied) -> bool:
+    """Evaluate a once-migration baseline in a rollback-only transaction."""
     try:
         with conn.cursor() as cur:
             configure_transaction_safety(cur)
@@ -141,6 +146,7 @@ def apply_migration(
     validate_core_schema,
     record_script,
 ) -> None:
+    """Apply one migration atomically and record its checksum on success."""
     try:
         with conn.cursor() as cur:
             configure_transaction_safety(cur)
@@ -154,6 +160,7 @@ def apply_migration(
 
 
 def record_baseline(conn, identity: str, checksum: str, commit_id: str, record_script) -> None:
+    """Record a satisfied baseline without executing the migration body."""
     try:
         with conn.cursor() as cur:
             record_script(cur, identity, checksum, commit_id)
