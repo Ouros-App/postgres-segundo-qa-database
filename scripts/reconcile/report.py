@@ -13,6 +13,7 @@ def write_github_summary(
     core_missing_before: list[str],
     core_missing_after: list[str],
 ) -> None:
+    """Publish a compact reconciliation report to the GitHub Actions summary."""
     lines = [
         "## QA SQL Reconciliation",
         "",
