@@ -129,3 +129,26 @@ Este projeto está sob a licença MIT. Consulte LICENSE para o texto completo.
 <!-- CONTRIBUTORS:END -->
 
 > Atualizado automaticamente semanalmente pelo workflow de metadados do README.
+
+## QA SQL Reconciler
+
+O QA é mutável por definição: DBAs e devs podem alterar schema e montar cenários de teste. O prod continua sendo a fonte da verdade do contrato gerenciado, mas **dados de teste do QA não são espelhados nem apagados**.
+
+O fluxo oficial agora é `python scripts/reconcile_sql.py`. Cada migration passa por preflight, checagem de dependências e um **dry-run transacional contra o estado real do QA**. O probe sempre sofre rollback; somente depois de aprovado o SQL é executado de verdade em uma transação separada.
+
+Estados possíveis: `APPLIED`, `RECONCILED`, `UNCHANGED`, `BASELINED`, `QUARANTINED`, `BLOCKED`, `DISABLED` e `FAILED`. Uma falha não crítica fica isolada e as migrations independentes continuam. Apenas migration marcada como crítica falha o job inteiro.
+
+`reconcile.yaml` define criticidade e dependências específicas do QA. SQL `on_change` pode ser reaplicado mesmo com checksum igual para corrigir drift causado por alterações manuais; migrations `once` continuam protegidas contra reexecução.
+
+O sync com produção passa a tratar como um contrato único:
+
+- `sql/`
+- `config.yaml`
+- `scripts/apply_sql.py`
+- `requirements.txt`
+- `upstream.lock`
+
+`upstream.lock` registra o commit exato de `postgres-segundo-prod-database/main`. O reconciliador mantém `qa_reconciliation_runs`, `qa_reconciliation_items` e `qa_reconciliation_state` para auditoria. A tabela `controle_versoes` só recebe nova versão quando o resultado geral é `HEALTHY`.
+
+Secrets adicionais usados pelo runner sincronizado do prod: `ANALYTICS_SYNC_PASSWORD` e `MS_AUTH_SERVICE_PASSWORD`.
+
