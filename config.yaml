@@ -20,6 +20,8 @@ database:
   execution_order:
     - file: banco_ouros_fisico.sql
       mode: on_change
+    - file: funcoes_consumo_metas.sql
+      mode: on_change
     - file: atualiza_updated_at_analytics.sql
       mode: on_change
     - file: analytics_sync_user.sql
@@ -33,6 +35,8 @@ database:
     - file: atualiza_lots_farm-owners.sql
       mode: once
     - file: atualiza_farms-chicken-left.sql
+      mode: once
+    - file: atualiza_farm-owners-campos-opcionais.sql
       mode: once
     - file: dataload_inicial.sql
       mode: once

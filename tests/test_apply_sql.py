@@ -123,6 +123,7 @@ class ApplySqlTest(unittest.TestCase):
             [(path.name, mode, baseline_query is not None) for path, mode, baseline_query in entries],
             [
                 ("banco_ouros_fisico.sql", "on_change", False),
+                ("funcoes_consumo_metas.sql", "on_change", False),
                 ("atualiza_updated_at_analytics.sql", "on_change", False),
                 ("analytics_sync_user.sql", "on_change", False),
                 ("keycloak_user_link.sql", "on_change", False),
@@ -130,6 +131,7 @@ class ApplySqlTest(unittest.TestCase):
                 ("triggers_logs.sql", "on_change", False),
                 ("atualiza_lots_farm-owners.sql", "once", False),
                 ("atualiza_farms-chicken-left.sql", "once", False),
+                ("atualiza_farm-owners-campos-opcionais.sql", "once", False),
                 ("dataload_inicial.sql", "once", True),
                 ("atualiza_consumo_mensal.sql", "never", False),
                 ("views_galinhas_consumo.sql", "on_change", False),
