@@ -20,6 +20,8 @@ database:
   execution_order:
     - file: banco_ouros_fisico.sql
       mode: on_change
+    - file: nullable_legacy_missing_columns.sql
+      mode: once
     - file: indices_consulta_registros.sql
       mode: once
     - file: atualiza_tips_categories_relations.sql
@@ -41,6 +43,8 @@ database:
     - file: triggers_logs.sql
       mode: on_change
     - file: remover_poultry_capacity_farms.sql
+      mode: once
+    - file: remover_state_goal_farm_id_and_farms_place.sql
       mode: once
     - file: atualiza_lots_farm-owners.sql
       mode: once
