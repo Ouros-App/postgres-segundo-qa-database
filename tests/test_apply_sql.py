@@ -142,6 +142,8 @@ class ApplySqlTest(unittest.TestCase):
                 ("atualiza_lots_farm-owners.sql", "once", False),
                 ("atualiza_farms-chicken-left.sql", "once", False),
                 ("atualiza_farm-owners-campos-opcionais.sql", "once", False),
+                ("adiciona_notifications_event_id.sql", "once", False),
+                ("adiciona_tips_title_foto_url.sql", "once", False),
                 ("dataload_inicial.sql", "once", True),
                 ("dataload_analytics.sql", "never", False),
                 ("atualiza_consumo_mensal.sql", "never", False),
@@ -153,6 +155,7 @@ class ApplySqlTest(unittest.TestCase):
                 ("midas-resource-import.sql", "on_change", False),
                 ("views_analytics.sql", "on_change", False),
                 ("analytics_sync_user.sql", "on_change", False),
+                ("monitoramento_dau.sql", "always", False),
                 ("audience_engine_metadata.sql", "on_change", False),
             ],
         )
@@ -357,7 +360,8 @@ class ApplySqlTest(unittest.TestCase):
 
     def test_trigger_event_keywords_are_not_mistaken_for_update_statements(self) -> None:
         assert_safe_sql(
-            "CREATE TRIGGER t AFTER INSERT OR UPDATE OR DELETE ON farms FOR EACH ROW EXECUTE FUNCTION f();",
+            "CREATE TRIGGER t AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON farms "
+            "FOR EACH STATEMENT EXECUTE FUNCTION f();",
             "trigger.sql",
         )
 

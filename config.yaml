@@ -56,6 +56,10 @@ database:
       mode: once
     - file: atualiza_farm-owners-campos-opcionais.sql
       mode: once
+    - file: adiciona_notifications_event_id.sql
+      mode: once
+    - file: adiciona_tips_title_foto_url.sql
+      mode: once
     - file: dataload_inicial.sql
       mode: once
       # Seed somente em banco realmente vazio. Se qualquer dado de aplicacao existir,
@@ -95,5 +99,7 @@ database:
       mode: on_change
     - file: analytics_sync_user.sql
       mode: on_change
+    - file: monitoramento_dau.sql
+      mode: always
     - file: audience_engine_metadata.sql
       mode: on_change
