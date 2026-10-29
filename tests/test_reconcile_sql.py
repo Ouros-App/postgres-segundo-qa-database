@@ -276,6 +276,16 @@ class ReconcileSqlTest(unittest.TestCase):
         except ValueError:
             self.assertFalse(safe_rollback(RollbackFailureConnection()))
 
+    def test_repository_reconcile_policy_covers_profile_and_farm_simulations(self) -> None:
+        """Verify reconcile.yaml declares banco_ouros_fisico.sql dependency for new migrations."""
+        root = Path(__file__).resolve().parents[1]
+        policy = load_reconcile_policy(root)
+        for script in (
+            "company_employee_and_adm_profile.sql",
+            "farm_simulations.sql",
+        ):
+            self.assertEqual(migration_policy(policy, script)["depends_on"], ["banco_ouros_fisico.sql"])
+
     def test_safe_rollback_raises_when_it_is_the_primary_failure(self) -> None:
         """Verify rollback failures still surface when no primary error exists."""
         with self.assertRaisesRegex(RuntimeError, "rollback exploded"):

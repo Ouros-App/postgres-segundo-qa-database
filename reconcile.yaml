@@ -60,3 +60,11 @@ reconciliation:
       depends_on:
         - banco_ouros_fisico.sql
         - midas-user.sql
+
+    company_employee_and_adm_profile.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
+
+    farm_simulations.sql:
+      depends_on:
+        - banco_ouros_fisico.sql
